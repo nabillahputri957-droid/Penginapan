@@ -28,9 +28,11 @@ class Auth extends AppBase
             if (! $this->tokenOk()) {
                 return redirect()->back()->with('error', 'Sesi form kedaluwarsa, coba lagi.');
             }
-            $login = strtolower(trim((string) $this->request->getPost('email')));
-            $u     = (new UserModel())->groupStart()
+            $rawLogin = trim((string) $this->request->getPost('email'));
+            $login    = strtolower($rawLogin);
+            $u        = (new UserModel())->groupStart()
                 ->where('email', $login)
+                ->orWhere('nama', $rawLogin)
                 ->orWhere('nama', $login)
                 ->groupEnd()->first();
             if (! $u || ! password_verify((string) $this->request->getPost('password'), $u['password_hash'])) {
@@ -76,6 +78,62 @@ class Auth extends AppBase
         }
 
         return view('auth/daftar', ['title' => 'Daftar — Singgah Medan']);
+    }
+
+    public function lupaSandi()
+    {
+        if ($this->user()) {
+            return redirect()->to(site_url('/'));
+        }
+
+        if (strtolower($this->request->getMethod()) === 'post') {
+            if (! $this->tokenOk()) {
+                return redirect()->back()->with('error', 'Sesi form kedaluwarsa, coba lagi.');
+            }
+
+            $ok = $this->validate([
+                'email'     => 'required',
+                'password'  => 'required|min_length[8]|max_length[72]',
+                'password2' => 'required|matches[password]',
+            ], [
+                'email'     => ['required' => 'Email atau username wajib diisi.'],
+                'password'  => [
+                    'required'   => 'Password baru wajib diisi.',
+                    'min_length' => 'Password baru minimal 8 karakter.',
+                    'max_length' => 'Password baru maksimal 72 karakter.',
+                ],
+                'password2' => [
+                    'required' => 'Ulangi password baru wajib diisi.',
+                    'matches'  => 'Ulangi password tidak sama.',
+                ],
+            ]);
+
+            if (! $ok) {
+                return redirect()->back()->withInput()->with('error', implode(' ', $this->validator->getErrors()));
+            }
+
+            $rawLogin  = trim((string) $this->request->getPost('email'));
+            $login     = strtolower($rawLogin);
+            $userModel = new UserModel();
+
+            $u = $userModel->groupStart()
+                ->where('email', $login)
+                ->orWhere('nama', $rawLogin)
+                ->orWhere('nama', $login)
+                ->groupEnd()->first();
+
+            if (! $u) {
+                return redirect()->back()->withInput()->with('error', 'Akun dengan email atau username tersebut tidak ditemukan.');
+            }
+
+            $userModel->update($u['id'], [
+                'password_hash' => password_hash((string) $this->request->getPost('password'), PASSWORD_DEFAULT),
+            ]);
+
+            return redirect()->to(site_url('masuk'))->with('ok', 'Kata sandi berhasil diperbarui! Silakan masuk dengan sandi baru Anda.');
+        }
+
+        return view('auth/lupa_sandi', ['title' => 'Lupa Sandi — Singgah Medan']);
     }
 
     public function keluar()
